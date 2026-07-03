@@ -1,0 +1,15 @@
+# Node modules
+node_modules/
+myapp/node_modules/
+server/node_modules/
+
+# Environment files
+.env
+server/.env
+myapp/.env
+
+# Build folders
+myapp/build/
+
+# Logs
+npm-debug.log*
