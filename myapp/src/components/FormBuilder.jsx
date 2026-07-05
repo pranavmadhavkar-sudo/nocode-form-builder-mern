@@ -1,483 +1,242 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import FormControls from "./FormControls";
+import LivePreview from "./LivePreview";
+import FieldProperties from "./FieldProperties";
 
-function FormBuilder() {
+function FormBuilder({ initialForm, onSaveSuccess }) {
+  const [fields, setFields] = useState([]);
+  const [formTitle, setFormTitle] = useState("My Dynamic Form");
+  const [selectedFieldId, setSelectedFieldId] = useState(null);
+  const [darkMode, setDarkMode] = useState(false);
 
-    const [fields, setFields] = useState([]);
-
-    const [selectedField, setSelectedField] = useState(null);
-    const currentField = fields.find(
-    (field) => field.id === selectedField
-);
-    const [darkMode, setDarkMode] = useState(false);
-
-    function addField(type) {
-
-   const newField = {
-
-    id: Date.now(),
-
-    type: type,
-
-    label:
-        type.charAt(0).toUpperCase() + type.slice(1),
-
-    placeholder:
-        "Enter " + type,
-
-    required: false
-
-};
-
-    const updatedFields = [...fields, newField];
-
-setFields(updatedFields);
-
-setSelectedField(newField.id);
-
-}
-
-    function clearForm() {
-
-        setFields([]);
-
+  // Sync with initialForm prop when editing from My Forms
+  useEffect(() => {
+    if (initialForm) {
+      setFields(initialForm.fields || []);
+      setFormTitle(initialForm.title || "My Dynamic Form");
+      setSelectedFieldId(null);
     }
-    function deleteField(id) {
+  }, [initialForm]);
 
-    const updatedFields = fields.filter(
+  // Handle active selected field object lookup
+  const selectedField = fields.find((f) => f.id === selectedFieldId) || null;
 
-        (field) => field.id !== id
+  // Add field helper
+  function addField(type) {
+    const newField = {
+      id: Date.now(),
+      type: type,
+      label: type.charAt(0).toUpperCase() + type.slice(1),
+      placeholder: "Enter " + type,
+      required: false,
+      minLength: "",
+      maxLength: "",
+    };
 
-    );
+    setFields([...fields, newField]);
+    setSelectedFieldId(newField.id);
+  }
 
-    setFields(updatedFields);
+  // Clear Form workspace
+  function clearForm() {
+    if (window.confirm("Are you sure you want to clear the entire form builder?")) {
+      setFields([]);
+      setSelectedFieldId(null);
+    }
+  }
 
-}
+  // Delete field helper
+  function deleteField(id) {
+    setFields(fields.filter((field) => field.id !== id));
+    if (selectedFieldId === id) {
+      setSelectedFieldId(null);
+    }
+  }
 
-function moveUp(index) {
-
+  // Reorder: Move field up
+  function moveUp(index) {
     if (index === 0) return;
-
     const updated = [...fields];
-
-    [updated[index], updated[index - 1]] =
-    [updated[index - 1], updated[index]];
-
+    [updated[index], updated[index - 1]] = [updated[index - 1], updated[index]];
     setFields(updated);
+  }
 
-}
-
-function moveDown(index) {
-
+  // Reorder: Move field down
+  function moveDown(index) {
     if (index === fields.length - 1) return;
-
     const updated = [...fields];
-
-    [updated[index], updated[index + 1]] =
-    [updated[index + 1], updated[index]];
-
+    [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
     setFields(updated);
+  }
 
-}
+  // Save Form to Backend (MongoDB)
+  async function saveForm() {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user || !user.id) {
+      alert("❌ Please log in to save your forms to MongoDB.");
+      return;
+    }
 
-    async function saveForm() {
+    if (fields.length === 0) {
+      alert("❌ Form cannot be empty. Add some fields first.");
+      return;
+    }
+
+    const titleInput = prompt("Enter a title for your form:", formTitle);
+    if (titleInput === null) return; // Cancelled
+    const finalTitle = titleInput.trim() || "My Dynamic Form";
+    setFormTitle(finalTitle);
 
     try {
+      const response = await fetch("http://localhost:5000/api/forms/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: finalTitle,
+          userId: user.id,
+          fields: fields,
+        }),
+      });
 
-        const user = JSON.parse(localStorage.getItem("user"));
+      const data = await response.json();
 
-        const response = await fetch("http://localhost:5000/api/forms/save", {
-
-            method: "POST",
-
-            headers: {
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-
-                title: "My Dynamic Form",
-
-                userId: user.id,
-
-                fields: fields
-
-            })
-
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-
-            alert("✅ Form Saved to MongoDB");
-
-        } else {
-
-            alert(data.message);
-
-        }
-
+      if (response.ok) {
+        alert("✅ Form Saved to MongoDB Successfully!");
+        if (onSaveSuccess) onSaveSuccess();
+      } else {
+        alert("❌ " + (data.message || "Failed to save form"));
+      }
     } catch (error) {
-
-        console.error(error);
-        alert("❌ Error Saving Form");
-
+      console.error(error);
+      alert("❌ Error Saving Form. Server might be offline.");
     }
+  }
 
-}
-
-function loadForm() {
-
+  // Load last saved form structure from local storage
+  function loadForm() {
     const savedForm = localStorage.getItem("myForm");
-
-    if(savedForm){
-
-        setFields(JSON.parse(savedForm));
-
-        alert("Form Loaded Successfully!");
-
+    if (savedForm) {
+      try {
+        const parsed = JSON.parse(savedForm);
+        setFields(parsed);
+        setSelectedFieldId(null);
+        alert("✅ Local Form Loaded Successfully!");
+      } catch (err) {
+        alert("❌ Failed to parse saved local form.");
+      }
+    } else {
+      alert("ℹ️ No Saved Local Form Found! (Save to Local Storage first)");
     }
+  }
 
-    else{
-
-        alert("No Saved Form Found!");
-
+  // Export form structure as local JSON file
+  function exportJSON() {
+    if (fields.length === 0) {
+      alert("❌ Form is empty. Add fields before exporting.");
+      return;
     }
-
-}
-
-function exportJSON() {
-
     const jsonData = JSON.stringify(fields, null, 2);
-
-    const blob = new Blob([jsonData], {
-        type: "application/json"
-    });
-
+    const blob = new Blob([jsonData], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
-
     a.href = url;
-
-    a.download = "form_structure.json";
-
+    a.download = `${formTitle.toLowerCase().replace(/\s+/g, "_")}_structure.json`;
     a.click();
+    URL.revokeObjectURL(url);
+  }
 
-}
+  // Import form structure from local JSON file
+  function importJSON(event) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-function lightTheme() {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedFields = JSON.parse(e.target.result);
+        if (Array.isArray(importedFields)) {
+          setFields(importedFields);
+          setSelectedFieldId(null);
+          alert("✅ Form structure imported successfully!");
+        } else {
+          alert("❌ Invalid file format: Root element must be an array.");
+        }
+      } catch (err) {
+        alert("❌ Invalid JSON file. Parse error.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ""; // Reset file input
+  }
 
-    document.body.style.background = "#eef4ff";
-    document.body.style.color = "black";
+  // Sync theme changes with document attributes
+  const toggleTheme = (isDark) => {
+    setDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.setAttribute("data-theme", "dark");
+      // Keep old compatibility styles in case other elements rely on document.body style overrides
+      document.body.style.background = "#090d16";
+      document.body.style.color = "white";
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+      document.body.style.background = "#f1f5f9";
+      document.body.style.color = "black";
+    }
+  };
 
-}
+  // Update specific field settings from right sidebar
+  const updateField = (updatedField) => {
+    setFields(fields.map((f) => (f.id === updatedField.id ? updatedField : f)));
+  };
 
-function darkTheme() {
+  return (
+    <section id="builder" className="container py-5">
+      <div className="text-center mb-5">
+        <h2 className="fw-bold text-primary mb-2">⚡ Interactive Form Builder</h2>
+        <p className="text-muted">
+          Design your custom form structure in real-time. Double click/tap fields to customize parameters.
+        </p>
+      </div>
 
-    document.body.style.background = "#212529";
-    document.body.style.color = "white";
-
-}
-
-    return (
-
-        <section id="builder" className="container py-5">
-
-            <h2 className="text-center mb-5">
-
-                Dynamic Form Builder
-
-            </h2>
-
-            <div className="row">
-
-                {/* Left Panel */}
-
-                <div className="col-lg-4">
-
-                    <div className="card shadow p-3">
-
-                        <h4 className="mb-3">
-
-                            Form Controls
-
-                        </h4>
-
-                        <button
-                            className="btn btn-primary w-100 mb-2"
-                            onClick={() =>
-                                addField("text")
-                            }
-                        >
-                            ➕ Text Field
-                        </button>
-
-                        <button
-                            className="btn btn-success w-100 mb-2"
-                            onClick={() =>
-                                addField("email")
-                            }
-                        >
-                            📧 Email
-                        </button>
-
-                        <button
-                            className="btn btn-warning w-100 mb-2"
-                            onClick={() =>
-                                addField("number")
-                            }
-                        >
-                            🔢 Number
-                        </button>
-
-                        <button
-                            className="btn btn-info w-100 mb-2"
-                            onClick={() =>
-                                addField("date")
-                            }
-                        >
-                            📅 Date
-                        </button>
-
-                        <button
-                            className="btn btn-secondary w-100 mb-2"
-                            onClick={() =>
-                                addField("password")
-                            }
-                        >
-                            🔒 Password
-                        </button>
-
-                        <button
-                            className="btn btn-dark w-100 mb-2"
-                            onClick={() =>
-                                addField("textarea")
-                            }
-                        >
-                            📝 Textarea
-                        </button>
-
-                        <button
-                            className="btn btn-danger w-100 mt-3"
-                            onClick={clearForm}
-                        >
-                            🗑 Clear Form
-                        </button>
-
-                        <button
-className="btn btn-success w-100 mt-2"
-onClick={saveForm}
->
-
-💾 Save Form
-
-</button>
-
-<button
-className="btn btn-primary w-100 mt-2"
-onClick={loadForm}
->
-📂 Load Saved Form
-
-
-</button>
-
-<button
-className="btn btn-warning w-100 mt-2"
-onClick={exportJSON}
->
-
-📤 Export JSON
-
-</button>
-
-<hr/>
-
-<h5 className="text-center">
-Theme
-</h5>
-
-<button
-className="btn btn-light border w-100 mt-2"
-onClick={lightTheme}
->
-
-☀️ Light Theme
-
-</button>
-
-<button
-className="btn btn-dark w-100 mt-2"
-onClick={darkTheme}
->
-
-🌙 Dark Theme
-
-</button>
-                        <hr />
-
-<h5 className="mt-4">Selected Field</h5>
-
-{
-    currentField ? (
-
-        <div className="card p-3 mt-3">
-
-            <h5>Field Properties</h5>
-
-            <label className="form-label mt-2">
-                Label
-            </label>
-
-            <input
-                type="text"
-                className="form-control"
-                value={currentField.label}
-                onChange={(e) => {
-
-                    const updated = [...fields];
-
-                    const index = updated.findIndex(
-                        field => field.id === currentField.id
-                    );
-
-                    updated[index].label = e.target.value;
-
-                    setFields(updated);
-
-                }}
-            />
-
+      <div className="row g-4">
+        {/* Left Sidebar - Form Controls (Col-lg-3) */}
+        <div className="col-lg-3 col-md-4">
+          <FormControls
+            onAddField={addField}
+            onClearForm={clearForm}
+            onSaveForm={saveForm}
+            onLoadSavedForm={loadForm}
+            onExportJSON={exportJSON}
+            onImportJSON={importJSON}
+            darkMode={darkMode}
+            onToggleTheme={toggleTheme}
+          />
         </div>
 
-    ) : (
-
-        <div className="alert alert-secondary mt-3">
-
-            Select any field to edit its properties.
-
+        {/* Center Panel - Live Preview (Col-lg-6) */}
+        <div className="col-lg-6 col-md-8">
+          <LivePreview
+            fields={fields}
+            selectedField={selectedFieldId}
+            onSelectField={setSelectedFieldId}
+            onMoveUp={moveUp}
+            onMoveDown={moveDown}
+            onDeleteField={deleteField}
+          />
         </div>
 
-    )
-}
-
-                    </div>
-
-                </div>
-
-                {/* Right Panel */}
-
-                <div className="col-lg-8">
-
-                    <div className="card shadow">
-
-                        <div className="card-header bg-primary text-white">
-
-                            <h4>
-
-                                Live Preview
-
-                            </h4>
-
-                        </div>
-
-                        <div className="card-body">
-
-                            {
-
-                                fields.length === 0 ?
-
-                                    <p className="text-center text-muted">
-
-                                        Your form fields will appear here.
-
-                                    </p>
-
-                                    :
-
-                                    fields.map((field, index) =>(
-
-                                        <div
-    className={`card p-3 mb-3 ${
-        selectedField === field.id
-            ? "border border-primary border-3"
-            : ""
-    }`}
-    key={field.id}
-    onClick={() => setSelectedField(field.id)}
->
-
-                                            <div className="d-flex justify-content-between align-items-center mb-2">
-
-  <label className="form-label fw-bold">
-    {field.label || field.type.charAt(0).toUpperCase() + field.type.slice(1)}
-</label>
-
-    <div className="d-flex">
-
-    <button
-        className="btn btn-secondary me-1"
-        onClick={() => moveUp(index)}
-    >
-        ⬆️
-    </button>
-
-    <button
-        className="btn btn-secondary me-1"
-        onClick={() => moveDown(index)}
-    >
-        ⬇️
-    </button>
-
-    <button
-        className="btn btn-danger"
-        onClick={() => deleteField(field.id)}
-    >
-        ❌
-    </button>
-
-</div>
-
-</div>
-
-                                            {
-
-                                                field.type === "textarea" ?
-
-                                                    <textarea
-                                                        className="form-control"
-                                                        rows="4"
-                                                    />
-
-                                                    :
-
-                                                    <input
-    type={field.type}
-    className="form-control"
-    placeholder={field.label || "Enter Value"}
-/>
-
-                                            }
-
-                                        </div>
-
-                                    ))
-
-                            }
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-        </section>
-
-    );
-
+        {/* Right Sidebar - Field Properties (Col-lg-3) */}
+        <div className="col-lg-3 col-md-12">
+          <FieldProperties 
+            field={selectedField} 
+            onUpdateField={updateField} 
+          />
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default FormBuilder;

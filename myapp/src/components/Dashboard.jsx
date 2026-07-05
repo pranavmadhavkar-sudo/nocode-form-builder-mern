@@ -23,7 +23,7 @@ const email = user?.email || "Not Logged In";
 
                         <h5>👤 Username</h5>
 
-                        <h3>{user?.username}</h3>
+                        <h3>{username}</h3>
 
                     </div>
 
@@ -35,7 +35,7 @@ const email = user?.email || "Not Logged In";
 
                         <h5>📧 Email</h5>
 
-                        <h6>{user?.email}</h6>
+                        <h6>{email}</h6>
 
                     </div>
 
